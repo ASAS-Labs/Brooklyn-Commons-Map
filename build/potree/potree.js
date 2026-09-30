@@ -66337,7 +66337,7 @@ void main() {
 				let {byteOffset, byteSize} = node;
 
 
-				let urlOctree = `${this.url}/../octree.bin`;
+				let urlOctree = `${this.url}/../octree.bin.png`;   // D-57: see hierarchy note below
 
 				let first = byteOffset;
 				let last = byteOffset + byteSize - 1n;
@@ -66547,7 +66547,22 @@ void main() {
 		async loadHierarchy(node){
 
 			let {hierarchyByteOffset, hierarchyByteSize} = node;
-			let hierarchyPath = `${this.url}/../hierarchy.bin`;
+			let hierarchyPath = `${this.url}/../hierarchy.bin.png`;
+			// D-57, 2026-10-01. The .png extension is NOT cosmetic and must not be
+			// "tidied" back to .bin. GitHub Pages gzips application/octet-stream
+			// and applies Range to the COMPRESSED entity: hierarchy.bin is 73,194
+			// bytes raw but the server answered
+			//     content-range: bytes 0-6445/34148
+			// so Potree's byte offsets indexed into a gzip stream. The first chunk
+			// decompressed to a length that is not a multiple of 22, and
+			// parseHierarchy's `new Array(buffer.byteLength / 22)` threw
+			//     RangeError: Invalid array length
+			// then every proxy chunk past offset 34148 returned 416. octree.bin was
+			// hit too -- its range reported /69428118, 11 KB LARGER than the file,
+			// because gzipping brotli data expands it.
+			// Pages does not compress image/* , so an extension it maps to a
+			// already-compressed type restores honest byte offsets. Verified:
+			// hero.jpg answers content-range .../457376, its true size.
 			
 			let first = hierarchyByteOffset;
 			let last = first + hierarchyByteSize - 1n;

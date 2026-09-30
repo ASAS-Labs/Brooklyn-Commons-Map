@@ -34,7 +34,7 @@ PotreeConverter work/brooklyn_commons.las \
   -o pointclouds/brooklyn_commons --encoding BROTLI -m poisson
 ```
 
-7.5 M points indexes in about 2 s and produces a 66 MB `octree.bin` — under
+7.5 M points indexes in about 2 s and produces a 66 MB `octree.bin.png` — under
 GitHub's 100 MB per-file limit, so no chunking is needed.
 
 ## Testing locally
