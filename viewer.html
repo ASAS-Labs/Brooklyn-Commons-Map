@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<title>Brooklyn Commons Point Cloud</title>
+<link rel="stylesheet" type="text/css" href="build/potree/potree.css">
+<link rel="stylesheet" type="text/css" href="libs/jquery-ui/jquery-ui.min.css">
+<link rel="stylesheet" type="text/css" href="libs/openlayers3/ol.css">
+<link rel="stylesheet" type="text/css" href="libs/spectrum/spectrum.css">
+<link rel="stylesheet" type="text/css" href="libs/jstree/themes/mixed/style.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@600&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<style>
+  :root{--ink:#E6ECEE;--dim:#8B9CA4;--edge:#1E2A31;--ground:#07090B;
+        --panel:rgba(9,13,16,.86);--accent:#2AA5B8}
+  html,body{margin:0;height:100%;background:var(--ground);color:var(--ink);
+    font-family:'IBM Plex Sans',system-ui,sans-serif;overflow:hidden}
+  #potree_render_area{background:var(--ground)!important}
+  .hud{position:absolute;z-index:60}
+  /* right column: identity card, then how-to. One flow so the how-to always
+     sits under the card whatever the card's height. */
+  #right{top:18px;right:18px;display:flex;flex-direction:column;gap:10px;width:360px;
+    max-height:calc(100vh - 180px);overflow-y:auto;scrollbar-width:thin}
+  #card,#howto{background:var(--panel);border:1px solid var(--edge);border-radius:3px;
+    backdrop-filter:blur(8px)}
+  #card{padding:14px 18px 13px}
+  #howto{padding:12px 18px 13px}
+  /* the label is the toggle; override the global button reset rather than
+     nesting a second control inside it */
+  #howto .lbl{font:600 10.5px/1 'IBM Plex Sans Condensed',sans-serif;letter-spacing:.16em;
+    color:var(--dim);text-transform:uppercase;margin:0 0 11px;padding:0;border:0;
+    background:none;width:100%;display:flex;align-items:center;justify-content:space-between;
+    cursor:pointer;transition:color .12s,margin .28s ease}
+  #howto .lbl:hover{color:var(--ink)}
+  #howto .chev{font-size:10px;transition:transform .28s ease;color:var(--accent)}
+  /* 1fr -> 0fr collapses without needing to know the content height */
+  #howto .wrap{display:grid;grid-template-rows:1fr;transition:grid-template-rows .28s ease}
+  #howto .wrap > dl{overflow:hidden;min-height:0}
+  #howto.collapsed .wrap{grid-template-rows:0fr}
+  #howto.collapsed .lbl{margin-bottom:0}
+  #howto.collapsed .chev{transform:rotate(-90deg)}
+  #howto dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:8px 13px;align-items:baseline}
+  #howto dt{font:500 12.5px/1.5 'IBM Plex Mono',monospace;color:var(--accent);white-space:nowrap}
+  #howto dd{margin:0;font-size:14px;line-height:1.5;color:#A7B6BD}
+  /* badge bar: every logo ships with an opaque background, so they sit together
+     on one light chip rather than as three white rectangles on a dark map */
+  /* Bottom-right. Potree's sidebar toggle lives at the top-left and the panel
+     opens leftward over the full height, so anything on that side is either
+     covered or covering the burger. The right edge is the only corner the
+     sidebar never reaches. */
+  #footer{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:9px}
+  /* Four marks in one static row would be a wide slab over the map, so they
+     scroll through a window the size of the old three-logo bar. The track holds
+     the set twice and translates by exactly -50%, i.e. one whole set including
+     its trailing gap, so the loop has no seam. Duplicating with a plain gap and
+     translating -50% would drift by half a gap each cycle. */
+  #brand{background:#F2F5F6;border:1px solid rgba(0,0,0,.10);border-radius:3px;
+    padding:9px 0;box-shadow:0 2px 14px rgba(0,0,0,.45);overflow:hidden;
+    width:clamp(160px,24vw,252px);
+    -webkit-mask-image:linear-gradient(90deg,transparent,#000 14px,
+      #000 calc(100% - 14px),transparent);
+    mask-image:linear-gradient(90deg,transparent,#000 14px,
+      #000 calc(100% - 14px),transparent)}
+  #track{display:flex;width:max-content;animation:marquee 19s linear infinite}
+  #track .set{display:flex;align-items:center;gap:26px;padding-right:26px}
+  #track img{display:block;height:30px;width:auto;flex:0 0 auto}
+  #brand:hover #track{animation-play-state:paused}
+  @keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+  @media (prefers-reduced-motion:reduce){
+    #track{animation:none}
+    #brand{width:auto;overflow-x:auto;-webkit-mask-image:none;mask-image:none}}
+  #card .kicker{font:600 10px/1 'IBM Plex Sans Condensed',sans-serif;letter-spacing:.19em;
+    color:var(--accent);text-transform:uppercase}
+  #card h1{font:600 20px/1.2 'IBM Plex Sans Condensed',sans-serif;margin:8px 0 5px}
+  #card p{margin:0;font-size:13.5px;line-height:1.55;color:#A7B6BD}
+  #card .stat{margin-top:9px;padding-top:9px;border-top:1px solid var(--edge);
+    font:500 11.5px/1.6 'IBM Plex Mono',monospace;color:var(--dim);font-variant-numeric:tabular-nums}
+  #card .stat b{color:var(--ink);font-weight:500}
+  #card .back{color:var(--accent);text-decoration:none;font:500 11.5px/1.6 'IBM Plex Mono',monospace}
+  #card .back:hover{text-decoration:underline}
+  /* One row spanning the full width instead of two independently anchored
+     corners -- anchored separately, the control groups grow rightward until
+     they run under the badge bar on a wide screen. */
+  #bottom{left:18px;right:18px;bottom:18px;display:flex;align-items:flex-end;
+    justify-content:space-between;gap:18px;pointer-events:none}
+  #bottom > *{pointer-events:auto}
+  #bar{display:flex;gap:20px;align-items:flex-end;flex-wrap:wrap;flex:1 1 auto;min-width:0}
+  .grp{background:var(--panel);border:1px solid var(--edge);border-radius:3px;
+    padding:9px 11px;backdrop-filter:blur(8px)}
+  .grp .lbl{font:600 9px/1 'IBM Plex Sans Condensed',sans-serif;letter-spacing:.16em;
+    color:var(--dim);text-transform:uppercase;margin-bottom:7px}
+  .row{display:flex;gap:5px;align-items:center}
+  button{font:500 12px/1 'IBM Plex Sans',sans-serif;color:var(--ink);background:transparent;
+    border:1px solid var(--edge);border-radius:2px;padding:7px 11px;cursor:pointer;
+    transition:background .12s,border-color .12s,color .12s}
+  button:hover{border-color:var(--accent);color:#fff}
+  button.on{background:var(--accent);border-color:var(--accent);color:#04191D}
+  button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  input[type=range]{accent-color:var(--accent);width:110px}
+  #hint{font:400 11px/1.6 'IBM Plex Mono',monospace;color:#7E8E96;text-align:right;
+    text-shadow:0 1px 3px rgba(0,0,0,.8)}
+  #boot{position:fixed;inset:0;z-index:120;display:flex;align-items:center;
+    justify-content:center;background:var(--ground);transition:opacity .6s}
+  #boot .inner{text-align:center}
+  #boot .marks{display:flex;align-items:center;justify-content:center;gap:20px;flex-wrap:wrap;
+    background:#F2F5F6;border-radius:4px;padding:16px 24px;box-shadow:0 4px 30px rgba(0,0,0,.5)}
+  #boot .marks img{display:block;height:46px;width:auto;opacity:0;
+    animation:rise .55s cubic-bezier(.2,.7,.3,1) forwards}
+  #boot .marks img:nth-child(1){animation-delay:.10s}
+  #boot .marks img:nth-child(3){animation-delay:.24s}
+  #boot .marks img:nth-child(5){animation-delay:.38s}
+  #boot .marks img:nth-child(7){animation-delay:.52s}
+  #boot .marks .sep{width:1px;height:38px;background:rgba(0,0,0,.14);opacity:0;
+    animation:rise .5s ease forwards .34s}
+  #boot .stage{margin-top:26px;opacity:0;transition:opacity .45s}
+  #boot .stage.on{opacity:1}
+  #boot span{font:500 11.5px/1 'IBM Plex Mono',monospace;color:var(--dim);
+    letter-spacing:.04em;font-variant-numeric:tabular-nums}
+  #boot .bar{margin:13px auto 0;width:230px;height:2px;background:var(--edge);overflow:hidden}
+  #boot .bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
+  @keyframes rise{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){
+    #boot .marks img,#boot .marks .sep{animation:none;opacity:1}}
+  /* Below 900px the bottom row stacks rather than hiding anything -- last time
+     the two corners were anchored independently and grew into each other. */
+  @media (max-width:900px){
+    #right{width:auto;left:18px;max-height:42vh}
+    #bottom{flex-direction:column;align-items:stretch;gap:11px}
+    #footer{align-items:flex-start}
+    #hint{text-align:left}
+  }
+  @media (max-width:720px){#hint{display:none}}
+</style>
+</head>
+<body>
+<script src="libs/jquery/jquery-3.1.1.min.js"></script>
+<script src="libs/spectrum/spectrum.js"></script>
+<script src="libs/jquery-ui/jquery-ui.min.js"></script>
+<script src="libs/other/BinaryHeap.js"></script>
+<script src="libs/tween/tween.min.js"></script>
+<script src="libs/d3/d3.js"></script>
+<script src="libs/proj4/proj4.js"></script>
+<script src="libs/openlayers3/ol.js"></script>
+<script src="libs/i18next/i18next.js"></script>
+<script src="libs/jstree/jstree.js"></script>
+<script src="libs/three.js/build/three.js"></script>
+<script src="build/potree/potree.js"></script>
+<script src="libs/plasio/js/laslaz.js"></script>
+
+<div class="potree_container" style="position:absolute;width:100%;height:100%;left:0;top:0">
+  <div id="potree_render_area"></div>
+  <div id="potree_sidebar_container"></div>
+</div>
+
+<div class="hud" id="right">
+  <div id="card">
+    <div class="kicker">ASAS Labs &middot; autonomous go-kart</div>
+    <h1>Brooklyn Commons</h1>
+    <p>The prior map the vehicle localises against, and the lanelet route it is
+       allowed to drive. Recorded at Brooklyn Commons and used as the NDT
+       reference map for the go-kart programme.</p>
+    <div class="stat">
+      <b>7,497,016</b> points &mdash; the complete map<br>
+      <b>242 &times; 176 m</b> surveyed &middot; <b>4.1 cm</b> point spacing<br>
+      <b>277 m</b> of routable lanelet in <b>4</b> segments
+    </div>
+    <div class="stat"><a class="back" href="index.html">&larr; project overview</a></div>
+  </div>
+  <div id="howto">
+    <button class="lbl" id="howtoBtn" aria-expanded="true" aria-controls="howtoBody">
+      How to use <span class="chev" aria-hidden="true">&#9662;</span>
+    </button>
+    <div class="wrap" id="howtoBody"><dl>
+      <dt>drag</dt><dd>orbit around the site</dd>
+      <dt>right-drag</dt><dd>pan sideways</dd>
+      <dt>scroll</dt><dd>zoom &mdash; detail sharpens as you close in</dd>
+      <dt>Go to</dt><dd>whole site, the driveable route, or ground level</dd>
+      <dt>Colour by</dt><dd>height separates trees and buildings from the plaza</dd>
+      <dt>Detail</dt><dd>how many points are loaded at once &mdash; raise for density, lower if it stutters</dd>
+      <dt>Route</dt><dd>the lanelet centreline and bounds the planner uses</dd>
+    </dl></div>
+  </div>
+</div>
+
+<div class="hud" id="bottom">
+<div id="bar">
+  <div class="grp">
+    <div class="lbl">Go to</div>
+    <div class="row">
+      <button data-view="all" class="on">Whole site</button>
+      <button data-view="route">Route</button>
+      <button data-view="ground">Ground level</button>
+    </div>
+  </div>
+  <div class="grp">
+    <div class="lbl">Colour by</div>
+    <div class="row">
+      <button data-attr="elevation" class="on">Height</button>
+      <button data-attr="intensity">Reflectivity</button>
+      <button data-attr="rgba">Surface</button>
+    </div>
+  </div>
+  <div class="grp">
+    <div class="lbl">Detail &mdash; <span id="budgetv">2</span> M</div>
+    <div class="row"><input id="budget" type="range" min="1" max="12" step="1" value="2"></div>
+  </div>
+  <div class="grp">
+    <div class="lbl">Point size</div>
+    <div class="row"><input id="ptsize" type="range" min="1" max="5" step="1" value="1"></div>
+  </div>
+  <div class="grp">
+    <div class="lbl">Height band &mdash; 0&ndash;<span id="ehv">13</span> m</div>
+    <div class="row"><input id="ehi" type="range" min="4" max="24" step="1" value="13"></div>
+  </div>
+  <div class="grp">
+    <div class="lbl">View</div>
+    <div class="row">
+      <button id="btnEdl" class="on">Shading</button>
+      <button id="btnRoute" class="on">Route</button>
+      <button id="btnInv">Invert</button>
+      <button id="btnBg">Light</button>
+      <button id="btnTools">Tools</button>
+    </div>
+  </div>
+</div>
+  <div id="footer">
+    <div id="hint">point cloud &amp; lanelet map &copy; ASAS Labs &middot; rendered with Potree</div>
+    <div id="brand"><div id="track">
+      <div class="set">
+        <img src="logos/asas_t.png" alt="ASAS Labs">
+        <img src="logos/nyu_t.png" alt="New York University">
+        <img src="logos/cuny_t.png" alt="CUNY">
+        <img src="logos/hrpk_t.png" alt="Hudson River Park">
+      </div>
+      <div class="set" aria-hidden="true">
+        <img src="logos/asas_t.png" alt="">
+        <img src="logos/nyu_t.png" alt="">
+        <img src="logos/cuny_t.png" alt="">
+        <img src="logos/hrpk_t.png" alt="">
+      </div>
+    </div></div>
+  </div>
+</div>
+<div id="boot"><div class="inner">
+  <div class="marks">
+    <img src="logos/asas_t.png" alt="ASAS Labs">
+    <div class="sep"></div>
+    <img src="logos/nyu_t.png" alt="New York University">
+    <div class="sep"></div>
+    <img src="logos/cuny_t.png" alt="CUNY">
+    <div class="sep"></div>
+    <img src="logos/hrpk_t.png" alt="Hudson River Park">
+  </div>
+  <div class="stage" id="bootstage">
+    <span id="bootmsg">Preparing 7.5 million points</span>
+    <div class="bar"><i id="bootbar"></i></div>
+  </div>
+</div></div>
+
+<script>
+// Map frame is local ENU metres (map_projector_info.yaml: projector_type: Local),
+// so these are the vehicle's own map coordinates -- the same frame NDT publishes
+// poses in and the same frame the lanelet file stores local_x / local_y in.
+//
+// Computed from the cloud's bounding box, not eyeballed: for a 60 deg FOV the
+// distance that fits an extent E is (E/2)/tan(30 deg). Guessed eye positions
+// point at empty space.
+const VIEWS = {
+  all:    [[0.5, -145.0, 134.3], [0.5, 25.6, 1.0]],   // 250 m extent, 38 deg elevation
+  route:  [[-2.0, -53.3, 53.8],  [-29.0, 20.9, 0.5]], // the driveable loop
+  ground: [[-38.4, 41.1, 4.7],   [-29.0, 20.9, 1.2]]  // eye level, to judge density
+};
+
+// The marks land first, then the loading state fades in under them, so the
+// splash reads as an identity rather than a progress bar with logos attached.
+// A warm cache loads this in well under a second, which would flash the splash
+// past before anyone reads it, so hold a floor on it.
+const BOOT_T0 = performance.now();
+const BOOT_MIN_MS = 3200;
+setTimeout(() => {
+  const s = document.getElementById("bootstage");
+  if (s) s.classList.add("on");
+}, 800);
+
+// WebGL preflight. Without this, a browser that cannot create a GL context
+// throws inside the Potree.Viewer constructor, every line below it never runs,
+// and the splash -- which is only ever removed by the load callback -- sits
+// there forever. It reads as "the map is slow to load" when in fact nothing
+// ever started. That misreading cost a diagnosis cycle on 2026-09-29.
+function webglProblem(){
+  try {
+    const c = document.createElement("canvas");
+    if (!(window.WebGLRenderingContext)) return "This browser has no WebGL support at all.";
+    const gl = c.getContext("webgl2") || c.getContext("webgl") || c.getContext("experimental-webgl");
+    if (!gl) return "The browser refused to create a WebGL context. This usually means " +
+                    "it is running on a software renderer (llvmpipe / SwiftShader) and has " +
+                    "WebGL blocklisted, or GPU access is unavailable in a sandbox.";
+    return null;
+  } catch (e) { return String(e); }
+}
+function bootFail(msg, detail){
+  const boot = document.getElementById("boot");
+  if (!boot) { console.error(msg, detail); return; }
+  const stage = document.getElementById("bootstage");
+  if (stage) stage.classList.add("on");
+  const bar = boot.querySelector(".bar"); if (bar) bar.remove();
+  const m = document.getElementById("bootmsg");
+  if (m){
+    m.style.cssText = "display:block;max-width:44ch;text-align:left;line-height:1.65;color:#E6ECEE";
+    m.innerHTML = "<b style='color:#C6522E'>The 3D viewer could not start.</b><br><br>" +
+      msg + "<br><br><span style='color:#8B9CA4'>" + (detail || "") + "</span>";
+  }
+  console.error("VIEWER FAILED TO START:", msg, detail || "");
+}
+
+const glProblem = webglProblem();
+let viewer = null;
+if (glProblem){
+  bootFail(glProblem,
+    "Check chrome://gpu or brave://gpu. To force software WebGL, start the browser " +
+    "with --enable-unsafe-swiftshader, or set \u201cOverride software rendering " +
+    "list\u201d to Enabled in about:flags. A machine with a working GPU will be " +
+    "far better at 7.5 million points.");
+  throw new Error("WebGL unavailable: " + glProblem);
+}
+try {
+  viewer = new Potree.Viewer(document.getElementById("potree_render_area"));
+} catch (e) {
+  bootFail("Potree could not initialise its renderer.", String(e));
+  throw e;
+}
+viewer.setEDLEnabled(true);
+viewer.setEDLRadius(1.4);
+viewer.setEDLStrength(0.45);
+viewer.setFOV(60);
+// 2 M, NOT Hudson's 8 M. The budget is an absolute point count, so what it
+// means depends entirely on how big the cloud is. Hudson has 102.7 M points, so
+// an 8 M budget makes Potree load about 8% of its octree and stop. This cloud
+// has 7.5 M points -- an 8 M budget EXCEEDS it, so every node is within budget
+// and Potree pulls all 3,327 nodes and the whole 66 MB before it settles. Same
+// number, opposite behaviour. 2 M loads a good LOD immediately; the Detail
+// slider goes to 12 M for anyone who wants every point.
+viewer.setPointBudget(2_000_000);
+viewer.setBackground("black");
+viewer.setDescription("");
+viewer.loadGUI(() => { viewer.setLanguage('en'); });
+
+const clouds = [];
+let PT_SIZE = 1;
+function flyTo(key, animate){
+  const [eye, tgt] = VIEWS[key];
+  const v = viewer.scene.view;
+  // Potree 1.8 bundles its own three.js copy for the renderer, so go through
+  // Potree's view API rather than constructing THREE objects for the camera.
+  if (animate === false){ v.position.set(eye[0], eye[1], eye[2]); v.lookAt(tgt[0], tgt[1], tgt[2]); }
+  else { v.setView(eye, tgt, 900); }
+}
+
+// ONE octree, not ten. Hudson's 102.7 M points produced a 645 MB octree.bin and
+// had to be cut into ten segments to clear GitHub's 100 MB file limit. At
+// 7.5 M points this one is 66 MB, so it loads as a single cloud.
+const bootbar = document.getElementById("bootbar");
+const bootmsg = document.getElementById("bootmsg");
+Potree.loadPointCloud("pointclouds/brooklyn_commons/metadata.json", "brooklyn_commons", e => {
+  const pc = e.pointcloud, m = pc.material;
+  // Height on a rainbow ramp by default, over a MEASURED band. Colouring by
+  // reflectivity lets the plaza floor dominate and sends trees and building
+  // faces -- which return weakly -- to black. Measured on this cloud: z runs
+  // -1.27 m at the 2nd percentile to 12.71 m at the 97th, so the band below
+  // separates ground from everything standing on it.
+  m.activeAttributeName = "elevation";
+  m.gradient = Potree.Gradients.RAINBOW;
+  m.elevationRange = [-1.3, 13];
+  // Intensity was stretched to 0..65535 across the 4-96 percentile band at LAS
+  // export, but the median still lands at 9,124, so the full range crushes
+  // almost everything into the bottom of the ramp.
+  m.intensityRange = [0, 20000];
+  // FIXED, not ADAPTIVE. Adaptive sizing inflates each point to cover its
+  // octree cell, which reads as blobs; fixed screen-space dots keep every
+  // sample one pixel and let real density carry the detail. The point budget
+  // is what fills the gaps instead.
+  m.pointSizeType = Potree.PointSizeType.FIXED;
+  m.size = PT_SIZE;
+  m.shape = Potree.PointShape.SQUARE;
+  viewer.scene.addPointCloud(pc);
+  clouds.push(pc);
+  flyTo("all", false);
+  bootbar.style.width = "100%";
+  bootmsg.textContent = "Ready";
+  const boot = document.getElementById("boot");
+  const held = Math.max(0, BOOT_MIN_MS - (performance.now() - BOOT_T0));
+  setTimeout(() => {
+    boot.style.opacity = 0;
+    setTimeout(() => boot.remove(), 650);
+  }, held);
+});
+
+// ---- the lanelet route ------------------------------------------------------
+// This is what Hudson used its OSM basemap for -- telling you WHERE you are --
+// except here the answer is better than a street map: the actual polygon the
+// planner is allowed to route inside. lanelet2_map_split.osm stores local_x /
+// local_y / ele in the same frame as the cloud, so it drops straight in with no
+// projection. (The original lanelet2_map.osm is one self-closing lanelet with
+// its bounds inverted and cannot be routed on; this is the 4-segment rebuild.)
+let routeGroup = null;
+fetch("route.json").then(r => r.json()).then(d => {
+  const g = new THREE.Group();
+  const mk = (pts, colour, width, lift) => {
+    const geo = new THREE.BufferGeometry().setFromPoints(
+      pts.map(p => new THREE.Vector3(p[0], p[1], p[2] + lift)));
+    g.add(new THREE.Line(geo, new THREE.LineBasicMaterial(
+      { color: colour, linewidth: width, depthTest: false, transparent: true, opacity: 0.95 })));
+  };
+  Object.values(d.lanelets).forEach(l => {
+    mk(l.left,   0x2AA5B8, 1, 0.12);   // bounds in the accent
+    mk(l.right,  0x2AA5B8, 1, 0.12);
+    mk(l.centre, 0xC6522E, 2, 0.16);   // centreline in the oxide, lifted clear
+  });
+  // depthTest off keeps the route visible through the cloud; render last so it
+  // draws over the points rather than z-fighting the ground returns.
+  g.renderOrder = 999;
+  routeGroup = g;
+  viewer.scene.scene.add(g);
+}).catch(e => {
+  // Hudson lost an iteration to a silent catch hiding a real TypeError here.
+  console.error("ROUTE FAILED:", e);
+  const b = document.getElementById("btnRoute");
+  if (b) { b.classList.remove("on"); b.textContent = "Route \u2717"; b.title = String(e); }
+});
+
+const howto = document.getElementById("howto");
+const howtoBtn = document.getElementById("howtoBtn");
+function setHowto(open){
+  howto.classList.toggle("collapsed", !open);
+  howtoBtn.setAttribute("aria-expanded", String(open));
+  try { localStorage.setItem("bcommons.howto", open ? "1" : "0"); } catch (e) {}
+}
+// a private window or blocked site data makes this throw, so default to open
+try { if (localStorage.getItem("bcommons.howto") === "0") setHowto(false); } catch (e) {}
+howtoBtn.addEventListener("click", () => setHowto(howto.classList.contains("collapsed")));
+
+function group(sel, fn){
+  document.querySelectorAll(sel).forEach(b => b.addEventListener("click", () => {
+    document.querySelectorAll(sel).forEach(o => o.classList.remove("on"));
+    b.classList.add("on"); fn(b);
+  }));
+}
+group("[data-view]", b => flyTo(b.dataset.view));
+group("[data-attr]", b => clouds.forEach(c => c.material.activeAttributeName = b.dataset.attr));
+
+document.getElementById("budget").addEventListener("input", e => {
+  const m = parseInt(e.target.value, 10);
+  viewer.setPointBudget(m * 1_000_000);
+  document.getElementById("budgetv").textContent = m;
+});
+
+// Inverting is just remapping the stop positions and reversing; the colour
+// objects are reused, so this needs no THREE constructors.
+const G_NORMAL = Potree.Gradients.RAINBOW;
+const G_INVERT = G_NORMAL.map(s => [1 - s[0], s[1]]).reverse();
+
+document.getElementById("btnRoute").addEventListener("click", function(){
+  this.classList.toggle("on");
+  if (routeGroup) routeGroup.visible = this.classList.contains("on");
+});
+document.getElementById("btnInv").addEventListener("click", function(){
+  this.classList.toggle("on");
+  const g = this.classList.contains("on") ? G_INVERT : G_NORMAL;
+  clouds.forEach(c => c.material.gradient = g);
+});
+document.getElementById("ehi").addEventListener("input", e => {
+  const hi = parseInt(e.target.value, 10);
+  clouds.forEach(c => c.material.elevationRange = [-1.3, hi]);
+  document.getElementById("ehv").textContent = hi;
+});
+document.getElementById("ptsize").addEventListener("input", e => {
+  PT_SIZE = parseInt(e.target.value, 10);
+  clouds.forEach(c => c.material.size = PT_SIZE);
+});
+document.getElementById("btnBg").addEventListener("click", function(){
+  const light = !this.classList.contains("on");
+  this.classList.toggle("on", light);
+  viewer.setBackground(light ? "white" : "black");
+  document.getElementById("potree_render_area").style.background = light ? "#F4F6F7" : "";
+});
+document.getElementById("btnEdl").addEventListener("click", function(){
+  this.classList.toggle("on");
+  viewer.setEDLEnabled(this.classList.contains("on"));
+});
+document.getElementById("btnTools").addEventListener("click", function(){
+  this.classList.toggle("on");
+  viewer.toggleSidebar();
+});
+</script>
+</body>
+</html>

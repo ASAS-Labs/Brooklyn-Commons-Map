@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Brooklyn Commons</title>
+<meta name="description" content="The prior map and lanelet route for an autonomous go-kart at Brooklyn Commons — 7.5 million points, and the measurements behind the vehicle that drives it.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<style>
+  /* Single-theme on purpose: this page is the front door to a viewer that is
+     dark-only, and the point cloud renders on near-black. Every colour is
+     declared, so it holds whatever ground the host paints. */
+  :root{
+    --ground:#07090B; --raise:#0C1115; --ink:#E6ECEE; --dim:#8B9CA4;
+    --edge:#1E2A31; --accent:#2AA5B8; --oxide:#C6522E;
+    --sans:'IBM Plex Sans',system-ui,sans-serif;
+    --cond:'IBM Plex Sans Condensed',var(--sans);
+    --mono:'IBM Plex Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
+    font-size:16px;line-height:1.6;overflow-x:hidden}
+  .wrap{width:min(1120px,100% - 32px);margin-inline:auto}
+  a{color:var(--accent)}
+  h1,h2,h3{font-family:var(--cond);text-wrap:balance;margin:0}
+  .kicker{font:600 10.5px/1 var(--cond);letter-spacing:.2em;text-transform:uppercase;
+    color:var(--accent);margin:0}
+
+  /* ---- hero: the map itself, scrimmed so type stays legible over canopy ---- */
+  #hero{position:relative;min-height:min(86vh,760px);display:flex;align-items:flex-end;
+    border-bottom:1px solid var(--edge);overflow:hidden}
+  #hero .bg{position:absolute;inset:0;background:url("hero.jpg") center/cover no-repeat;
+    opacity:.85}
+  #hero .scrim{position:absolute;inset:0;background:
+    linear-gradient(180deg,rgba(7,9,11,.82) 0%,rgba(7,9,11,.30) 32%,rgba(7,9,11,.92) 88%),
+    linear-gradient(90deg,rgba(7,9,11,.86) 0%,rgba(7,9,11,.10) 62%)}
+  #hero .wrap{position:relative;z-index:2;padding:96px 0 44px}
+  #hero h1{font-size:clamp(38px,7.2vw,78px);font-weight:700;line-height:.98;
+    letter-spacing:-.015em;margin:14px 0 0}
+  #hero .sub{max-width:52ch;margin:18px 0 0;font-size:clamp(15px,1.8vw,18.5px);color:#B9C7CD}
+  .cta{display:inline-flex;align-items:center;gap:10px;margin-top:28px;padding:13px 22px;
+    background:var(--accent);color:#04191D;border-radius:3px;text-decoration:none;
+    font:600 14px/1 var(--cond);letter-spacing:.06em;text-transform:uppercase;
+    transition:transform .14s ease,box-shadow .14s ease}
+  .cta:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(42,165,184,.28)}
+  .cta:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+  #hero .legend{margin:22px 0 0;font:400 12px/1.7 var(--mono);color:#8FA0A8}
+  #hero .legend i{display:inline-block;width:22px;height:2px;background:#fff;
+    vertical-align:middle;margin-right:7px}
+
+  /* ---- stat strip ---- */
+  #stats{border-bottom:1px solid var(--edge);background:var(--raise)}
+  #stats .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--edge)}
+  #stats .cell{background:var(--raise);padding:26px 22px}
+  #stats b{display:block;font:700 clamp(24px,3.4vw,34px)/1 var(--cond);
+    font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  #stats span{display:block;margin-top:7px;font:400 12.5px/1.45 var(--mono);color:var(--dim)}
+
+  /* ---- generic section ---- */
+  section{padding:74px 0;border-bottom:1px solid var(--edge)}
+  section h2{font-size:clamp(25px,3.4vw,34px);font-weight:600;margin:12px 0 0;letter-spacing:-.01em}
+  section .lede{max-width:64ch;margin:16px 0 0;color:#AEBCC2;font-size:16.5px}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:46px;margin-top:40px}
+  .cols p{margin:0 0 14px;color:#AEBCC2}
+  .cols p:last-child{margin-bottom:0}
+  h3{font-size:17px;font-weight:600;margin:0 0 12px}
+
+  /* ---- spec table. The right-hand column is the point of the table: this
+         project's numbers are not all the same KIND of number, and which kind
+         each one is decides whether you can trust it. ---- */
+  .spec{width:100%;border-collapse:collapse;margin-top:34px;font-size:14.5px}
+  .spec caption{caption-side:bottom;margin-top:14px;text-align:left;color:var(--dim);
+    font:400 12.5px/1.6 var(--mono)}
+  .spec th{text-align:left;font:600 10px/1 var(--cond);letter-spacing:.17em;
+    text-transform:uppercase;color:var(--dim);padding:0 14px 11px 0;
+    border-bottom:1px solid var(--edge);white-space:nowrap}
+  .spec td{padding:11px 14px 11px 0;border-bottom:1px solid rgba(30,42,49,.55);vertical-align:top}
+  .spec td:nth-child(2){font-family:var(--mono);font-variant-numeric:tabular-nums;
+    white-space:nowrap;color:var(--ink)}
+  .spec td:first-child{color:#AEBCC2}
+  .tag{display:inline-block;font:500 10px/1 var(--mono);letter-spacing:.09em;
+    text-transform:uppercase;padding:4px 7px;border-radius:2px;white-space:nowrap}
+  .tag.m{color:#7FE3C4;background:rgba(127,227,196,.11);border:1px solid rgba(127,227,196,.3)}
+  .tag.d{color:#9FC3FF;background:rgba(159,195,255,.10);border:1px solid rgba(159,195,255,.28)}
+  .tag.p{color:#E8A87C;background:rgba(232,168,124,.11);border:1px solid rgba(232,168,124,.3)}
+  .scroller{overflow-x:auto}
+  code{font:400 13.5px/1 var(--mono);color:var(--accent);
+    background:rgba(42,165,184,.09);padding:2px 5px;border-radius:2px}
+
+  /* ---- sponsor marquee. Each .set is its own flex container with a
+         padding-right equal to the gap, so -50% is exactly one whole set
+         INCLUDING its trailing gap. Eight images in one flex row with `gap`
+         drifts half a gap per cycle and stutters visibly at the wrap. ---- */
+  footer{padding:54px 0 64px}
+  .foot{display:flex;justify-content:space-between;align-items:flex-end;gap:28px;flex-wrap:wrap}
+  .foot .meta{font:400 12.5px/1.8 var(--mono);color:#7E8E96}
+  #brand{background:#F2F5F6;border:1px solid rgba(0,0,0,.10);border-radius:3px;
+    padding:11px 0;box-shadow:0 2px 14px rgba(0,0,0,.45);overflow:hidden;
+    width:clamp(200px,32vw,320px);
+    -webkit-mask-image:linear-gradient(90deg,transparent,#000 16px,#000 calc(100% - 16px),transparent);
+    mask-image:linear-gradient(90deg,transparent,#000 16px,#000 calc(100% - 16px),transparent)}
+  #track{display:flex;width:max-content;animation:marquee 19s linear infinite}
+  #track .set{display:flex;align-items:center;gap:30px;padding-right:30px}
+  #track img{display:block;height:34px;width:auto;flex:0 0 auto}
+  #brand:hover #track{animation-play-state:paused}
+  @keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+  @media (prefers-reduced-motion:reduce){
+    #track{animation:none}
+    #brand{width:auto;overflow-x:auto;-webkit-mask-image:none;mask-image:none}
+    .cta{transition:none}
+  }
+  @media (max-width:860px){
+    #stats .grid{grid-template-columns:repeat(2,1fr)}
+    .cols{grid-template-columns:1fr;gap:32px}
+    #hero .wrap{padding:76px 0 36px}
+    section{padding:56px 0}
+  }
+</style>
+</head>
+<body>
+
+<header id="hero">
+  <div class="bg" role="img" aria-label="Top-down render of the Brooklyn Commons point cloud, coloured by height, with the lanelet route traced in white"></div>
+  <div class="scrim"></div>
+  <div class="wrap">
+    <p class="kicker">ASAS Labs &middot; autonomous go-kart</p>
+    <h1>Brooklyn&nbsp;Commons</h1>
+    <p class="sub">The prior map an autonomous go-kart localises against, and the
+      lanelet route it is allowed to drive. 7.5&nbsp;million points, explorable in
+      the browser.</p>
+    <a class="cta" href="viewer.html">Open the 3D map &rarr;</a>
+    <p class="legend"><i></i>the 277 m lanelet centreline, over the plaza it loops</p>
+  </div>
+</header>
+
+<div id="stats">
+  <div class="wrap"><div class="grid">
+    <div class="cell"><b>7,497,016</b><span>points in the map</span></div>
+    <div class="cell"><b>242 &times; 176</b><span>metres surveyed</span></div>
+    <div class="cell"><b>4.1 cm</b><span>median point spacing</span></div>
+    <div class="cell"><b>277 m</b><span>routable lanelet, 4 segments</span></div>
+  </div></div>
+</div>
+
+<section>
+  <div class="wrap">
+    <p class="kicker">The map</p>
+    <h2>A prior map, not a picture</h2>
+    <p class="lede">This cloud is the reference the vehicle matches live LiDAR scans
+      against to work out where it is. Everything about how it is stored is in
+      service of that, not of how it looks.</p>
+    <div class="cols">
+      <div>
+        <h3>Local frame, no projection</h3>
+        <p>The map carries <code>projector_type: Local</code>, so coordinates are
+          plain metres in the map's own frame rather than a geographic projection.
+          The lanelet file stores <code>local_x</code> and <code>local_y</code> in
+          that same frame, which is why the route overlays the cloud exactly, with
+          no reprojection anywhere in the viewer.</p>
+        <p>Anchoring that frame to the world is still open. It costs a click to
+          set the initial pose and nothing else, so it has not blocked anything.</p>
+      </div>
+      <div>
+        <h3>Why it is coloured by height</h3>
+        <p>The obvious choice is reflectivity, and it is the wrong one. A plaza is
+          overwhelmingly flat ground, so a reflectivity ramp lets the floor
+          dominate while tree canopy — which returns weakly — goes black and
+          disappears.</p>
+        <p>Height over a measured band separates exactly what you are trying to
+          see. On this cloud the 2nd percentile sits at &minus;1.27&nbsp;m and the
+          97th at 12.71&nbsp;m, so the ramp spans &minus;1.3 to 13&nbsp;m. The
+          viewer still offers reflectivity and baked surface colour as modes.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="kicker">The vehicle</p>
+    <h2>Measured, derived, or still a guess</h2>
+    <p class="lede">The vehicle model started as Autoware's sample Lexus. Its
+      wheelbase was wrong by a factor of 2.2 and its steering limit by 2.4, and both
+      feed the controller directly. Everything below is tagged by what kind of
+      number it actually is.</p>
+
+    <div class="scroller">
+    <table class="spec">
+      <caption>Steering is asymmetric by 29.2% in tire angle, from two effects that
+        compound: 19.2% in shaft travel and 11.1% in the shaft-to-tire linkage.
+        Autoware accepts one symmetric limit, so it gets the smaller side &mdash; a
+        clamp that is too tight only costs turning circle, one that is too loose lets
+        the planner ask for an angle the vehicle cannot reach.</caption>
+      <thead><tr><th>Quantity</th><th>Value</th><th>Basis</th></tr></thead>
+      <tbody>
+        <tr><td>Wheelbase</td><td>1.260 m</td><td><span class="tag m">measured</span></td></tr>
+        <tr><td>Overall length</td><td>1.740 m</td><td><span class="tag m">measured</span></td></tr>
+        <tr><td>Track, front / rear</td><td>1.150 / 0.860 m</td><td><span class="tag m">measured</span></td></tr>
+        <tr><td>Wheel radius, front / rear</td><td>0.165 / 0.200 m</td><td><span class="tag m">measured</span></td></tr>
+        <tr><td>Widest point</td><td>1.270 m</td><td><span class="tag d">derived</span></td></tr>
+        <tr><td>Max tire angle, left</td><td>22.50&deg; &middot; 0.3928 rad</td><td><span class="tag m">measured</span></td></tr>
+        <tr><td>Max tire angle, right</td><td>16.77&deg; &middot; 0.2927 rad</td><td><span class="tag d">lower bound</span></td></tr>
+        <tr><td>Min turning radius, left / right</td><td>3.04 / 4.18 m</td><td><span class="tag m">measured</span></td></tr>
+        <tr><td>Steering ratio, left / right</td><td>4.457 / 4.983 : 1</td><td><span class="tag m">measured</span></td></tr>
+        <tr><td>LiDAR height above ground</td><td>1.411 m</td><td><span class="tag m">measured</span></td></tr>
+        <tr><td>Throttle map</td><td>2 points</td><td><span class="tag p">placeholder</span></td></tr>
+        <tr><td>Mass, inertia, CG</td><td>&mdash;</td><td><span class="tag p">not measured</span></td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+</section>
+
+
+<footer>
+  <div class="wrap foot">
+    <div class="meta">
+      Point cloud and lanelet map &copy; ASAS Labs<br>
+      Rendered with <a href="https://github.com/potree/potree">Potree</a> &middot;
+      <a href="viewer.html">open the 3D map</a>
+    </div>
+    <div id="brand"><div id="track">
+      <div class="set">
+        <img src="logos/asas_t.png" alt="ASAS Labs">
+        <img src="logos/nyu_t.png" alt="New York University">
+        <img src="logos/cuny_t.png" alt="CUNY">
+        <img src="logos/hrpk_t.png" alt="Hudson River Park">
+      </div>
+      <div class="set" aria-hidden="true">
+        <img src="logos/asas_t.png" alt="">
+        <img src="logos/nyu_t.png" alt="">
+        <img src="logos/cuny_t.png" alt="">
+        <img src="logos/hrpk_t.png" alt="">
+      </div>
+    </div></div>
+  </div>
+</footer>
+
+</body>
+</html>
