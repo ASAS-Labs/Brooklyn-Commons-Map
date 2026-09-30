@@ -177,7 +177,7 @@
       <dt>right-drag</dt><dd>pan sideways</dd>
       <dt>scroll</dt><dd>zoom &mdash; detail sharpens as you close in</dd>
       <dt>Go to</dt><dd>whole site, <b>top-down</b> as RViz opens, the driveable route, or ground level</dd>
-      <dt>Colour by</dt><dd><b>RViz</b> is the stack’s own view; height separates trees and buildings from the plaza</dd>
+      <dt>Colour by</dt><dd>two of these are RViz’s own layers: <b>Map</b> is how it draws the prior map (flat white, 20%); <b>Scan</b> is how it draws the live LiDAR (rainbow over height)</dd>
       <dt>Detail</dt><dd>how many points are loaded at once &mdash; the flat-white view lives on density, so raise it if your machine allows</dd>
       <dt>Route</dt><dd>the lanelet centreline and bounds the planner uses</dd>
     </dl></div>
@@ -198,8 +198,8 @@
   <div class="grp">
     <div class="lbl">Colour by</div>
     <div class="row">
-      <button data-attr="color" class="on">RViz</button>
-      <button data-attr="elevation">Height</button>
+      <button data-attr="color" class="on">Map</button>
+      <button data-attr="elevation">Scan</button>
       <button data-attr="intensity">Reflectivity</button>
       <button data-attr="rgba">Surface</button>
     </div>
@@ -478,6 +478,11 @@ group("[data-view]", b => flyTo(b.dataset.view));
 // Opacity follows the mode. 0.2 is RViz's figure for the flat-white PRIOR MAP
 // specifically -- carrying it into the rainbow modes just makes them washed
 // out, which reads as a bug rather than a choice.
+// Two of these modes are RViz layers, not inventions:
+//   color     = /map/pointcloud_map            FlatColor, white, alpha 0.2
+//   elevation = /sensing/.../concatenated      AxisColor, Axis: Z, rainbow
+// The rainbow in RViz is over ELEVATION, not intensity -- easy to misremember,
+// and it sits on the live-scan display, not the prior map.
 const MODE_ALPHA = { color: RVIZ_ALPHA, elevation: 1.0, intensity: 1.0, rgba: 1.0 };
 group("[data-attr]", b => {
   const attr = b.dataset.attr;

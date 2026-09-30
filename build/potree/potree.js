@@ -66348,9 +66348,19 @@ void main() {
 					buffer = new ArrayBuffer(0);
 					console.warn(`loaded node with 0 bytes: ${node.name}`);
 				}else {
+					// D-58, 2026-10-01. REMOVED: 'content-type': 'multipart/byteranges'.
+						// Potree set a Content-Type on a bodyless GET, which is
+						// meaningless, and GitHub Pages / Fastly answers it with
+						// 400 Bad Request. Potree does not check response.ok, so it
+						// then read the 400 error page as octree bytes and
+						// parseHierarchy's new Array(byteLength / 22) threw
+						// "RangeError: Invalid array length" -- which is a SYMPTOM,
+						// not the fault. Reproduced exactly:
+						//   Range only ................... 206, content-range .../73194
+						//   Range + that content-type .... 400
+						// Do not reinstate it.
 					let response = await fetch(urlOctree, {
 						headers: {
-							'content-type': 'multipart/byteranges',
 							'Range': `bytes=${first}-${last}`,
 						},
 					});
@@ -66567,12 +66577,19 @@ void main() {
 			let first = hierarchyByteOffset;
 			let last = first + hierarchyByteSize - 1n;
 
+			// D-58: see the note on the octree fetch. Content-Type on a GET
+			// makes Fastly return 400, and Potree reads the error page as data.
 			let response = await fetch(hierarchyPath, {
 				headers: {
-					'content-type': 'multipart/byteranges',
 					'Range': `bytes=${first}-${last}`,
 				},
 			});
+			if (!response.ok && response.status !== 206 && response.status !== 200) {
+				// Potree swallowed this, which is how a 400 became a RangeError
+				// three call frames away. Fail loudly instead.
+				throw new Error(`hierarchy fetch ${response.status} for ` +
+					`${hierarchyPath} range ${first}-${last}`);
+			}
 
 
 
