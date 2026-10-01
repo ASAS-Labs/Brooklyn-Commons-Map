@@ -164,7 +164,8 @@
     <div class="stat">
       <b>7,497,016</b> points &mdash; the complete map<br>
       <b>242 &times; 176 m</b> surveyed &middot; <b>4.1 cm</b> point spacing<br>
-      <b>277 m</b> of routable lanelet in <b>4</b> segments
+      <b>281 m</b> of one-way lanelet in <b>4</b> segments<br>
+      drivable area is a <b>ring</b> &mdash; the plaza centre is not part of it
     </div>
     <div class="stat"><a class="back" href="index.html">&larr; project overview</a></div>
   </div>
@@ -179,7 +180,7 @@
       <dt>Go to</dt><dd>whole site, <b>top-down</b> as RViz opens, the driveable route, or ground level</dd>
       <dt>Colour by</dt><dd>two of these are RViz’s own layers: <b>Map</b> is how it draws the prior map (flat white, 20%); <b>Scan</b> is how it draws the live LiDAR (rainbow over height)</dd>
       <dt>Detail</dt><dd>how many points are loaded at once &mdash; the flat-white view lives on density, so raise it if your machine allows</dd>
-      <dt>Route</dt><dd>the lanelet centreline and bounds the planner uses</dd>
+      <dt>Route</dt><dd>the <b>drivable</b> ribbon, shaded, with arrows for the one-way direction of travel. The plaza middle is <b>not</b> drivable</dd>
     </dl></div>
   </div>
 </div>
@@ -434,24 +435,76 @@ Potree.loadPointCloud("pointclouds/brooklyn_commons/metadata.json", "brooklyn_co
 let routeGroup = null;
 fetch("route.json").then(r => r.json()).then(d => {
   const g = new THREE.Group();
-  const mk = (pts, colour, width, lift) => {
-    const geo = new THREE.BufferGeometry().setFromPoints(
-      pts.map(p => new THREE.Vector3(p[0], p[1], p[2] + lift)));
-    g.add(new THREE.Line(geo, new THREE.LineBasicMaterial(
-      { color: colour, linewidth: width, depthTest: false, transparent: true, opacity: 0.95 })));
-  };
+
+  // ---- DRIVABLE SURFACE -------------------------------------------------
+  // Filled, not just an outline. The lanelet is a RING: the middle of the
+  // plaza looks like the obvious place to drive and is NOT part of it. Only
+  // 39.4% of the map's bounding box is inside a lanelet. Showing the ribbon
+  // as a surface is the whole point -- an outline leaves the interior looking
+  // like it might count, which is exactly the mistake that cost a field
+  // session on 2026-10-01.
+  const ribbon = new THREE.MeshBasicMaterial({
+    color: 0x2AA5B8, transparent: true, opacity: 0.22,
+    side: THREE.DoubleSide, depthTest: false });
+  const edge = new THREE.LineBasicMaterial({
+    color: 0x2AA5B8, transparent: true, opacity: 0.9, depthTest: false });
+
   Object.values(d.lanelets).forEach(l => {
-    mk(l.left,   0x2AA5B8, 1, 0.12);   // bounds in the accent
-    mk(l.right,  0x2AA5B8, 1, 0.12);
-    mk(l.centre, 0xC6522E, 2, 0.16);   // centreline in the oxide, lifted clear
+    // Triangulate the ribbon by walking left and right bounds together. They
+    // are NOT sampled at matching stations, so step whichever side is behind
+    // in arc length rather than pairing by index.
+    const L = l.left, R = l.right;
+    const pos = [];
+    let i = 0, j = 0;
+    const al = [0], ar = [0];
+    for (let k = 1; k < L.length; k++)
+      al.push(al[k-1] + Math.hypot(L[k][0]-L[k-1][0], L[k][1]-L[k-1][1]));
+    for (let k = 1; k < R.length; k++)
+      ar.push(ar[k-1] + Math.hypot(R[k][0]-R[k-1][0], R[k][1]-R[k-1][1]));
+    const LT = al[al.length-1] || 1, RT = ar[ar.length-1] || 1;
+    while (i < L.length - 1 || j < R.length - 1) {
+      const a = L[i], b = R[j];
+      const advanceL = (i < L.length-1) &&
+            (j >= R.length-1 || (al[i+1]/LT) <= (ar[j+1]/RT));
+      const c = advanceL ? L[i+1] : R[j+1];
+      pos.push(a[0], a[1], 0.06,  b[0], b[1], 0.06,  c[0], c[1], 0.06);
+      if (advanceL) i++; else j++;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.add(new THREE.Mesh(geo, ribbon));
+
+    [l.left, l.right].forEach(b => {
+      const gg = new THREE.BufferGeometry().setFromPoints(
+        b.map(p => new THREE.Vector3(p[0], p[1], 0.10)));
+      g.add(new THREE.Line(gg, edge));
+    });
   });
-  // depthTest off keeps the route visible through the cloud; render last so it
-  // draws over the points rather than z-fighting the ground returns.
+
+  // ---- DIRECTION OF TRAVEL ----------------------------------------------
+  // The lanelets are one_way, and mission_planner refuses any goal whose
+  // arrow is more than goal_angle_threshold_deg (45) off the lane heading at
+  // that point -- a heading that swings 90 deg at every corner. A goal 0.04 m
+  // from the centreline was refused for being 75.1 deg out. So the direction
+  // is not decoration; it is a routing constraint you have to aim at.
+  const arrowMat = new THREE.MeshBasicMaterial({ color: 0xC6522E, depthTest: false });
+  const cone = new THREE.ConeGeometry(0.55, 1.9, 6);
+  (d.arrows || []).forEach(a => {
+    const m = new THREE.Mesh(cone, arrowMat);
+    m.position.set(a.x, a.y, 0.35);
+    // cone points +Y by default; rotate upright then into the lane heading
+    m.rotation.set(Math.PI / 2, 0, 0);
+    m.rotateOnWorldAxis(new THREE.Vector3(0, 0, 1), a.yaw - Math.PI / 2);
+    g.add(m);
+  });
+
   g.renderOrder = 999;
   routeGroup = g;
   viewer.scene.scene.add(g);
+  const meta = d.meta || {};
+  console.log(`route: ${meta.n_lanelets} lanelets, ${meta.total_length_m} m, `
+            + `${(d.arrows||[]).length} direction arrows`);
 }).catch(e => {
-  // Hudson lost an iteration to a silent catch hiding a real TypeError here.
   console.error("ROUTE FAILED:", e);
   const b = document.getElementById("btnRoute");
   if (b) { b.classList.remove("on"); b.textContent = "Route \u2717"; b.title = String(e); }
