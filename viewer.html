@@ -524,8 +524,13 @@ fetch("route.json").then(r => r.json()).then(d => {
   });
   const ag = new THREE.BufferGeometry();
   ag.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  // NOT white. The default colour mode draws the prior map as flat WHITE
+  // points (RViz's own FlatColor), so white arrows disappear into the cloud
+  // exactly where there is most of it. Oxide reads against both the white
+  // points and the teal ribbon, and it is already the palette's contrast
+  // colour.
   g.add(new THREE.Mesh(ag, new THREE.MeshBasicMaterial({
-    color: 0xFFFFFF, side: THREE.DoubleSide, depthTest: false })));
+    color: 0xFF7A3D, side: THREE.DoubleSide, depthTest: false })));
 
   g.renderOrder = 999;
   routeGroup = g;
