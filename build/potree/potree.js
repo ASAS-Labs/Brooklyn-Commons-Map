@@ -66345,8 +66345,26 @@ void main() {
 				let buffer;
 
 				if(byteSize === 0n){
-					buffer = new ArrayBuffer(0);
-					console.warn(`loaded node with 0 bytes: ${node.name}`);
+					// D-62, 2026-10-01. SHORT-CIRCUIT. Upstream built an empty
+					// ArrayBuffer here and then fell straight through to the
+					// decoder worker anyway, which does getUint32(0) on a
+					// zero-length DataView and throws
+					//     RangeError: Offset is outside the bounds of the DataView
+					// once per empty node, forever, in the console.
+					//
+					// This octree has 116 empty nodes of 3327 (3.5%) -- normal
+					// PotreeConverter output, where poisson sampling leaves some
+					// cells with no points. They carry nothing to decode, so the
+					// right thing is to mark them loaded with empty geometry and
+					// never involve the worker.
+					node.density = 0;
+					node.geometry = new BufferGeometry();
+					node.geometry.setAttribute('position',
+						new BufferAttribute(new Float32Array(0), 3));
+					node.loaded = true;
+					node.loading = false;
+					Potree.numNodesLoading--;
+					return;
 				}else {
 					// D-58, 2026-10-01. REMOVED: 'content-type': 'multipart/byteranges'.
 						// Potree set a Content-Type on a bodyless GET, which is
