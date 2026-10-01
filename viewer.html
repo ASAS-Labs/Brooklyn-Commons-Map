@@ -487,16 +487,34 @@ fetch("route.json").then(r => r.json()).then(d => {
   // that point -- a heading that swings 90 deg at every corner. A goal 0.04 m
   // from the centreline was refused for being 75.1 deg out. So the direction
   // is not decoration; it is a routing constraint you have to aim at.
-  const arrowMat = new THREE.MeshBasicMaterial({ color: 0xC6522E, depthTest: false });
-  const cone = new THREE.ConeGeometry(0.55, 1.9, 6);
+  // FLAT arrowheads lying in the XY plane, built from explicit world-frame
+  // vertices. No rotation matrix is involved, so there is no axis convention to
+  // get wrong -- the first version used ConeGeometry (whose axis is +Y),
+  // rotated it about X by 90 deg, and produced 48 cones all pointing at the
+  // sky regardless of heading.
+  //
+  // Flat triangles also read correctly from the top-down view, which is the one
+  // that matters: a cone seen from directly above is a circle.
+  const HEAD_LEN = 2.6, HEAD_W = 1.5, TAIL = 2.2;
+  const tri = [], tails = [];
   (d.arrows || []).forEach(a => {
-    const m = new THREE.Mesh(cone, arrowMat);
-    m.position.set(a.x, a.y, 0.35);
-    // cone points +Y by default; rotate upright then into the lane heading
-    m.rotation.set(Math.PI / 2, 0, 0);
-    m.rotateOnWorldAxis(new THREE.Vector3(0, 0, 1), a.yaw - Math.PI / 2);
-    g.add(m);
+    const c = Math.cos(a.yaw), s2 = Math.sin(a.yaw);
+    const px = -s2, py = c;                       // unit normal, left of travel
+    // tip, then the two base corners, all in map coordinates
+    const tx = a.x + c * HEAD_LEN, ty = a.y + s2 * HEAD_LEN;
+    const b1x = a.x + px * HEAD_W / 2, b1y = a.y + py * HEAD_W / 2;
+    const b2x = a.x - px * HEAD_W / 2, b2y = a.y - py * HEAD_W / 2;
+    tri.push(tx, ty, 0.14, b1x, b1y, 0.14, b2x, b2y, 0.14);
+    tails.push(a.x - c * TAIL, a.y - s2 * TAIL, 0.14, a.x, a.y, 0.14);
   });
+  const tg = new THREE.BufferGeometry();
+  tg.setAttribute('position', new THREE.Float32BufferAttribute(tri, 3));
+  g.add(new THREE.Mesh(tg, new THREE.MeshBasicMaterial({
+    color: 0xFFFFFF, side: THREE.DoubleSide, depthTest: false })));
+  const lg = new THREE.BufferGeometry();
+  lg.setAttribute('position', new THREE.Float32BufferAttribute(tails, 3));
+  g.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({
+    color: 0xFFFFFF, depthTest: false })));
 
   g.renderOrder = 999;
   routeGroup = g;
