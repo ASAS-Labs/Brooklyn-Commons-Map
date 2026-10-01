@@ -443,11 +443,16 @@ fetch("route.json").then(r => r.json()).then(d => {
   // as a surface is the whole point -- an outline leaves the interior looking
   // like it might count, which is exactly the mistake that cost a field
   // session on 2026-10-01.
+  // depthTest TRUE. With it false the ribbon painted over the entire point
+  // cloud, and from a low camera inside the loop the whole screen became a
+  // teal wall with the map invisible behind it. The ribbon sits at z = 0.06,
+  // just above the ground returns, so with depth testing on it still reads
+  // clearly from above and is correctly hidden by anything in front of it.
   const ribbon = new THREE.MeshBasicMaterial({
-    color: 0x2AA5B8, transparent: true, opacity: 0.22,
-    side: THREE.DoubleSide, depthTest: false });
+    color: 0x2AA5B8, transparent: true, opacity: 0.25,
+    side: THREE.DoubleSide, depthTest: true });
   const edge = new THREE.LineBasicMaterial({
-    color: 0x2AA5B8, transparent: true, opacity: 0.9, depthTest: false });
+    color: 0x7FE3C4, transparent: true, opacity: 0.95, depthTest: false });
 
   Object.values(d.lanelets).forEach(l => {
     // Triangulate the ribbon by walking left and right bounds together. They
@@ -495,26 +500,32 @@ fetch("route.json").then(r => r.json()).then(d => {
   //
   // Flat triangles also read correctly from the top-down view, which is the one
   // that matters: a cone seen from directly above is a circle.
-  const HEAD_LEN = 2.6, HEAD_W = 1.5, TAIL = 2.2;
-  const tri = [], tails = [];
+  // FULL ARROWS -- shaft plus head, as one filled polygon per arrow, with every
+  // vertex computed directly in map coordinates from (x, y, yaw). No rotation
+  // matrix, so there is no axis convention to get wrong: the first version used
+  // ConeGeometry (axis +Y), rotated it about X by 90 deg, and stood all 48
+  // cones vertically. The second drew bare triangles, which read as blobs from
+  // a low camera because an arrowhead with no shaft has no visible direction.
+  const LEN = 5.0, HEAD_LEN = 2.0, SHAFT_W = 0.70, HEAD_W = 2.2, ZA = 0.18;
+  const verts = [];
   (d.arrows || []).forEach(a => {
-    const c = Math.cos(a.yaw), s2 = Math.sin(a.yaw);
-    const px = -s2, py = c;                       // unit normal, left of travel
-    // tip, then the two base corners, all in map coordinates
-    const tx = a.x + c * HEAD_LEN, ty = a.y + s2 * HEAD_LEN;
-    const b1x = a.x + px * HEAD_W / 2, b1y = a.y + py * HEAD_W / 2;
-    const b2x = a.x - px * HEAD_W / 2, b2y = a.y - py * HEAD_W / 2;
-    tri.push(tx, ty, 0.14, b1x, b1y, 0.14, b2x, b2y, 0.14);
-    tails.push(a.x - c * TAIL, a.y - s2 * TAIL, 0.14, a.x, a.y, 0.14);
+    const fx = Math.cos(a.yaw), fy = Math.sin(a.yaw);   // forward
+    const nx = -fy, ny = fx;                            // left of travel
+    const sx = a.x - fx * LEN / 2, sy = a.y - fy * LEN / 2;        // tail
+    const jx = sx + fx * (LEN - HEAD_LEN), jy = sy + fy * (LEN - HEAD_LEN); // neck
+    const tx = sx + fx * LEN, ty = sy + fy * LEN;                  // tip
+    const P = (px, py, k, w) => [px + nx * k * w, py + ny * k * w];
+    const [a1, a2] = P(sx, sy, +1, SHAFT_W / 2), [b1, b2] = P(sx, sy, -1, SHAFT_W / 2);
+    const [c1, c2] = P(jx, jy, -1, SHAFT_W / 2), [d1, d2] = P(jx, jy, +1, SHAFT_W / 2);
+    const [e1, e2] = P(jx, jy, +1, HEAD_W / 2),  [f1, f2] = P(jx, jy, -1, HEAD_W / 2);
+    verts.push(a1, a2, ZA, b1, b2, ZA, c1, c2, ZA);     // shaft
+    verts.push(a1, a2, ZA, c1, c2, ZA, d1, d2, ZA);
+    verts.push(e1, e2, ZA, f1, f2, ZA, tx, ty, ZA);     // head
   });
-  const tg = new THREE.BufferGeometry();
-  tg.setAttribute('position', new THREE.Float32BufferAttribute(tri, 3));
-  g.add(new THREE.Mesh(tg, new THREE.MeshBasicMaterial({
+  const ag = new THREE.BufferGeometry();
+  ag.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  g.add(new THREE.Mesh(ag, new THREE.MeshBasicMaterial({
     color: 0xFFFFFF, side: THREE.DoubleSide, depthTest: false })));
-  const lg = new THREE.BufferGeometry();
-  lg.setAttribute('position', new THREE.Float32BufferAttribute(tails, 3));
-  g.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({
-    color: 0xFFFFFF, depthTest: false })));
 
   g.renderOrder = 999;
   routeGroup = g;
